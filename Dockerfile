@@ -24,7 +24,7 @@ RUN curl --fail --location --silent --show-error "https://download.gocd.org/bina
 RUN unzip /tmp/go-agent-22.1.0-13913.zip -d /
 RUN mv /go-agent-22.1.0 /go-agent && chown -R ${UID}:0 /go-agent && chmod -R g=u /go-agent
 
-FROM docker.io/docker:dind
+FROM docker.io/docker:19-dind
 
 LABEL gocd.version="22.1.0" \
   description="GoCD agent based on docker.io/docker:dind" \
@@ -50,8 +50,7 @@ RUN \
 # regardless of whatever dependencies get added
 # add user to root group for gocd to work on openshift
   adduser -D -u ${UID} -s /bin/bash -G root go && \
-    apk add --no-cache libsasl sudo && \
-    apk del --purge libc6-compat && \
+    apk add --no-cache libsasl sudo curl && \
   apk --no-cache upgrade && \
   apk add --no-cache nss git mercurial subversion openssh-client bash curl procps && \
   # install glibc and zlib for adoptopenjdk && \
@@ -96,13 +95,13 @@ RUN \
 
 ADD docker-entrypoint.sh /
 
-
 COPY --from=gocd-agent-unzip /go-agent /go-agent
 # ensure that logs are printed to console output
 COPY --chown=go:root agent-bootstrapper-logback-include.xml agent-launcher-logback-include.xml agent-logback-include.xml /go-agent/config/
 COPY --chown=root:root dockerd-sudo /etc/sudoers.d/dockerd-sudo
 
-RUN chown -R go:root /docker-entrypoint.d /go /godata /docker-entrypoint.sh \
+RUN chmod 755 ./docker-entrypoint.sh \
+    && chown -R go:root /docker-entrypoint.d /go /godata /docker-entrypoint.sh \
     && chmod -R g=u /docker-entrypoint.d /go /godata /docker-entrypoint.sh
 
   COPY --chown=root:root run-docker-daemon.sh /
