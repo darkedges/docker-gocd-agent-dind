@@ -20,9 +20,13 @@
 FROM curlimages/curl:latest as gocd-agent-unzip
 USER root
 ARG UID=1000
+ARG NAMESPACE=forgerock
 RUN curl --fail --location --silent --show-error "https://download.gocd.org/binaries/22.1.0-13913/generic/go-agent-22.1.0-13913.zip" > /tmp/go-agent-22.1.0-13913.zip
 RUN unzip /tmp/go-agent-22.1.0-13913.zip -d /
-RUN mv /go-agent-22.1.0 /go-agent && chown -R ${UID}:0 /go-agent && chmod -R g=u /go-agent
+RUN mv /go-agent-22.1.0 /go-agent && chown -R ${UID}:0 /go-agent && chmod -R g=u /go-agent && \
+    wget --no-check-certificate -O /tmp/${NAMESPACE}_idam_intermediate.pem https://vault.internal.darkedges.com/v1/${NAMESPACE}_idam_intermediate/ca/pem && \
+    wget --no-check-certificate -O /tmp/${NAMESPACE}_idam_root.pem https://vault.internal.darkedges.com/v1/${NAMESPACE}_idam_root/ca/pem 
+
 
 FROM docker.io/docker:19-dind
 
@@ -42,6 +46,8 @@ ENV GO_JAVA_HOME="/gocd-jre"
 ARG UID=1000
 ARG GID=1000
 
+ARG NAMESPACE=forgerock
+
 RUN \
 # add mode and permissions for files we added above
   chmod 0755 /usr/local/sbin/tini && \
@@ -50,7 +56,7 @@ RUN \
 # regardless of whatever dependencies get added
 # add user to root group for gocd to work on openshift
   adduser -D -u ${UID} -s /bin/bash -G root go && \
-    apk add --no-cache libsasl sudo curl && \
+    apk add --no-cache libsasl sudo curl ca-certificates && \
   apk --no-cache upgrade && \
   apk add --no-cache nss git mercurial subversion openssh-client bash curl procps && \
   # install glibc and zlib for adoptopenjdk && \
@@ -104,7 +110,15 @@ RUN chmod 755 ./docker-entrypoint.sh \
     && chown -R go:root /docker-entrypoint.d /go /godata /docker-entrypoint.sh \
     && chmod -R g=u /docker-entrypoint.d /go /godata /docker-entrypoint.sh
 
-  COPY --chown=root:root run-docker-daemon.sh /
+COPY --chown=root:root run-docker-daemon.sh /
+
+COPY --from=0 /tmp/*.pem /usr/local/share/ca-certificates/
+
+RUN update-ca-certificates && \
+    cp /usr/local/share/ca-certificates/* /etc/ssl/certs && \
+    update-ca-certificates && \
+    /gocd-jre/bin/keytool -import -trustcacerts -noprompt -cacerts -file /usr/local/share/ca-certificates/${NAMESPACE}_idam_root.pem -storepass changeit -alias ${NAMESPACE}Root && \
+    /gocd-jre/bin/keytool -import -trustcacerts -noprompt -cacerts -file /usr/local/share/ca-certificates/${NAMESPACE}_idam_intermediate.pem -storepass changeit -alias ${NAMESPACE}Intermediate
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
