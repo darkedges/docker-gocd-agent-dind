@@ -27,6 +27,7 @@ RUN mv /go-agent-22.1.0 /go-agent && chown -R ${UID}:0 /go-agent && chmod -R g=u
     wget --no-check-certificate -O /tmp/${NAMESPACE}_idam_intermediate.pem https://vault.internal.darkedges.com/v1/${NAMESPACE}_idam_intermediate/ca/pem && \
     wget --no-check-certificate -O /tmp/${NAMESPACE}_idam_root.pem https://vault.internal.darkedges.com/v1/${NAMESPACE}_idam_root/ca/pem 
 
+FROM alpine/helm:3.9.2 as helm
 
 FROM docker.io/docker:19-dind
 
@@ -113,6 +114,8 @@ RUN chmod 755 ./docker-entrypoint.sh \
 COPY --chown=root:root run-docker-daemon.sh /
 
 COPY --from=0 /tmp/*.pem /usr/local/share/ca-certificates/
+
+COPY --from=helm /usr/bin/helm /usr/bin/helm
 
 RUN update-ca-certificates && \
     cp /usr/local/share/ca-certificates/* /etc/ssl/certs && \
